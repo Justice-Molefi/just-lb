@@ -1,10 +1,30 @@
 use std::{
-    io::{Read, Write},
-    net::{TcpListener, TcpStream},
-    thread,
+    collections::HashMap, io::{Read, Write}, net::{TcpListener, TcpStream}, sync::{Arc, Mutex}, thread
 };
 
+use rand::RngExt;
+
+
 fn main() {
+
+    let mut servers: HashMap<String, String> = HashMap::new();
+    
+    servers.insert("127.0.0.1:8080".to_string(), "unhealthy".to_string());
+    servers.insert("127.0.0.1:8081".to_string(), "unhealthy".to_string());
+    servers.insert("127.0.0.1:8082".to_string(), "unhealthy".to_string());
+    servers.insert("127.0.0.1:8083".to_string(), "unhealthy".to_string());
+    servers.insert("127.0.0.1:8084".to_string(), "unhealthy".to_string());
+    servers.insert("127.0.0.1:8085".to_string(), "unhealthy".to_string());
+    servers.insert("127.0.0.1:8086".to_string(), "unhealthy".to_string());
+    servers.insert("127.0.0.1:8087".to_string(), "unhealthy".to_string());
+    servers.insert("127.0.0.1:8088".to_string(), "unhealthy".to_string());
+    servers.insert("127.0.0.1:8089".to_string(), "unhealthy".to_string());
+    servers.insert("127.0.0.1:8090".to_string(), "unhealthy".to_string());
+    servers.insert("127.0.0.1:8091".to_string(), "unhealthy".to_string());
+
+
+    check_health(servers);
+
     let mut rr_index: i32 = 0;
     let result = TcpListener::bind("127.0.0.1:80");
 
@@ -74,7 +94,7 @@ fn get_server_address(rr_index: &mut i32) -> String {
     let index = (*rr_index as usize) % server_addresses.len();
     let s = server_addresses.get(index).unwrap().clone();
 
-    println!("pricked server {index} : {s}");
+    println!("picked server {index} : {s}");
     *rr_index += 1;
 
     return s;
@@ -93,4 +113,32 @@ fn handle(write_stream: &mut TcpStream, read_stream: &mut TcpStream) {
     };
 
     let _ = write_stream.write(&buffer[..n]);
+}
+
+
+fn check_health(servers: HashMap<String,String>){
+
+    let servers_itr = servers.clone();
+    let servers = Arc::new(Mutex::new(servers));
+
+    for (addr, _) in servers_itr{
+
+        let servers = Arc::clone(&servers);
+
+        thread::spawn(move ||{
+            let r = rand::rng().random_range(0..2);
+            
+            let mut servers = servers.lock().unwrap();
+
+            if r == 0{
+                servers.insert(addr.clone(), "healthy".to_string());
+                println!("Server: {addr}, Status: healthy");
+            }else{
+                servers.insert(addr.clone(), "unhealthy".to_string());
+                println!("Server: {addr}, Status: unhealthy");
+            }
+            
+        });
+    }
+
 }
