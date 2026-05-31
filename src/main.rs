@@ -1,12 +1,14 @@
 use std::{
-    collections::HashMap, io::{Read, Write}, net::{TcpListener, TcpStream}, sync::{Arc, Mutex}, thread
+    collections::HashMap, io::{Read, Write}, net::{TcpListener, TcpStream}, sync::{Arc, Mutex}, thread, fs
 };
 
 use rand::RngExt;
-
+use serde:: { Deserialize};
 
 fn main() {
 
+
+    get_servers();
     let mut servers: HashMap<String, String> = HashMap::new();
     
     servers.insert("127.0.0.1:8080".to_string(), "unhealthy".to_string());
@@ -141,4 +143,28 @@ fn check_health(servers: HashMap<String,String>){
         });
     }
 
+}
+
+
+fn get_servers(){
+    let content = fs::read_to_string("config.toml").expect("failed to read config.toml");
+    let config: Config = toml::from_str(&content).expect("failed to read config content");
+
+
+    for server in config.servers{
+        println!("Host: {}, port: {}", server.host, server.port)
+    }
+
+}
+
+
+#[derive(Deserialize)]
+struct Config {
+    servers: Vec<Server>,
+}
+
+#[derive(Deserialize)]
+struct Server {
+    host: String,
+    port: u16
 }
