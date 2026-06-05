@@ -152,7 +152,7 @@ fn get_servers(){
 
 
     for server in config.servers{
-        println!("Host: {}, port: {}", server.host, server.port)
+        println!("Host: {}, port: {}, status: {:?}", server.host, server.port, server.status)
     }
 
 }
@@ -166,5 +166,18 @@ struct Config {
 #[derive(Deserialize)]
 struct Server {
     host: String,
-    port: u16
+    port: u16,
+
+    #[serde(skip, default = "default_status")]
+    status: ServerStatus
 }
+
+
+#[derive(Debug)]
+enum ServerStatus {
+    Healthy,
+    UnHealthy
+}
+
+
+fn default_status () -> ServerStatus { ServerStatus::UnHealthy }
