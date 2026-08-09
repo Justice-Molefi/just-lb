@@ -1,32 +1,42 @@
+mod checker;
+mod config;
+mod server;
+
 use std::{
-    collections::HashMap, io::{Read, Write}, net::{TcpListener, TcpStream}, sync::{Arc, Mutex}, thread, fs
+    collections::HashMap, io::{Read, Write}, net::{TcpListener, TcpStream}, sync::{Arc, Mutex}, thread, time::Duration
 };
 
-use rand::RngExt;
-use serde:: { Deserialize};
+use tokio::time::{MissedTickBehavior, interval};
 
-fn main() {
+use crate::{checker::check_health, config::get_servers, server::Server};
+
+#[tokio::main]
+async fn main() {
+
+    // Please remember to fix this soup...
+    let servers_vesc: Vec<Server>  = get_servers();
+    let servers_vec = servers_vesc.clone();
 
 
-    get_servers();
-    let mut servers: HashMap<String, String> = HashMap::new();
+    let servers: HashMap<String, Server> = servers_vec.into_iter().map(|server| (format!("{}:{}", server.host.clone() , server.port), server)).collect();
+    let servers = Arc::new(Mutex::new(servers));
+
+    let servers = Arc::clone(&servers);
+
+    tokio::spawn( async move {
+        let mut periodic_interval = interval(Duration::from_secs(5)); 
+       
+        periodic_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+        loop {
+            periodic_interval.tick().await;
+
+            check_health(&servers);
+        }
+    });
+
+
     
-    servers.insert("127.0.0.1:8080".to_string(), "unhealthy".to_string());
-    servers.insert("127.0.0.1:8081".to_string(), "unhealthy".to_string());
-    servers.insert("127.0.0.1:8082".to_string(), "unhealthy".to_string());
-    servers.insert("127.0.0.1:8083".to_string(), "unhealthy".to_string());
-    servers.insert("127.0.0.1:8084".to_string(), "unhealthy".to_string());
-    servers.insert("127.0.0.1:8085".to_string(), "unhealthy".to_string());
-    servers.insert("127.0.0.1:8086".to_string(), "unhealthy".to_string());
-    servers.insert("127.0.0.1:8087".to_string(), "unhealthy".to_string());
-    servers.insert("127.0.0.1:8088".to_string(), "unhealthy".to_string());
-    servers.insert("127.0.0.1:8089".to_string(), "unhealthy".to_string());
-    servers.insert("127.0.0.1:8090".to_string(), "unhealthy".to_string());
-    servers.insert("127.0.0.1:8091".to_string(), "unhealthy".to_string());
-
-
-    check_health(servers);
-
     let mut rr_index: i32 = 0;
     let result = TcpListener::bind("127.0.0.1:80");
 
@@ -54,7 +64,7 @@ fn main() {
             .try_clone()
             .expect("Failed to clone browser stream");
 
-        let server_address = get_server_address(&mut rr_index);
+        let server_address = get_server_address(&mut rr_index, &servers_vesc);
         let tcp_connect_result = TcpStream::connect(server_address);
 
         let mut server_read_stream = match tcp_connect_result {
@@ -86,20 +96,20 @@ fn main() {
     }
 }
 
-fn get_server_address(rr_index: &mut i32) -> String {
-    let server_addresses = vec![
-        String::from("127.0.0.1:8080"),
-        String::from("127.0.0.1:8080"),
-        String::from("127.0.0.1:8080"),
-    ];
 
-    let index = (*rr_index as usize) % server_addresses.len();
-    let s = server_addresses.get(index).unwrap().clone();
+fn get_server_address(rr_index: &mut i32, servers: &Vec<Server>) -> String {
 
-    println!("picked server {index} : {s}");
+    let index = (*rr_index as usize) % servers.len();
+    let s = servers.get(index).unwrap().clone();
+
+    println!("picked server {index} : {}", s.host);
     *rr_index += 1;
 
-    return s;
+    let server_host= s.host.clone();
+    let server_port: String = s.port.to_string().clone();
+
+    let server_addr =  format!("{server_host}:{server_port}");
+    return server_addr;
 }
 
 fn handle(write_stream: &mut TcpStream, read_stream: &mut TcpStream) {
@@ -116,68 +126,3 @@ fn handle(write_stream: &mut TcpStream, read_stream: &mut TcpStream) {
 
     let _ = write_stream.write(&buffer[..n]);
 }
-
-
-fn check_health(servers: HashMap<String,String>){
-
-    let servers_itr = servers.clone();
-    let servers = Arc::new(Mutex::new(servers));
-
-    for (addr, _) in servers_itr{
-
-        let servers = Arc::clone(&servers);
-
-        thread::spawn(move ||{
-            let r = rand::rng().random_range(0..2);
-            
-            let mut servers = servers.lock().unwrap();
-
-            if r == 0{
-                servers.insert(addr.clone(), "healthy".to_string());
-                println!("Server: {addr}, Status: healthy");
-            }else{
-                servers.insert(addr.clone(), "unhealthy".to_string());
-                println!("Server: {addr}, Status: unhealthy");
-            }
-            
-        });
-    }
-
-}
-
-
-fn get_servers(){
-    let content = fs::read_to_string("config.toml").expect("failed to read config.toml");
-    let config: Config = toml::from_str(&content).expect("failed to read config content");
-
-
-    for server in config.servers{
-        println!("Host: {}, port: {}, status: {:?}", server.host, server.port, server.status)
-    }
-
-}
-
-
-#[derive(Deserialize)]
-struct Config {
-    servers: Vec<Server>,
-}
-
-#[derive(Deserialize)]
-struct Server {
-    host: String,
-    port: u16,
-
-    #[serde(skip, default = "default_status")]
-    status: ServerStatus
-}
-
-
-#[derive(Debug)]
-enum ServerStatus {
-    Healthy,
-    UnHealthy
-}
-
-
-fn default_status () -> ServerStatus { ServerStatus::UnHealthy }
